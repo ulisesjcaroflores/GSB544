@@ -1,0 +1,155 @@
+---
+title: Regression Dashboard 
+subtitle: Important features & comparisons
+author: Ulises Caro
+format: 
+    dashboard:
+        embed-resources: true
+        theme: flatly
+        css: styles.css
+echo: false
+---
+
+## Setup (hidden)
+
+```{python}
+#| include: false
+#| echo: false
+%run "Kaggle Regression.ipynb"
+```
+
+## Model Predictions by PID & Distribution Train {height="50%"}
+```{python}
+#| title: "RMSE Comparison"
+#| width: 40%
+
+from IPython.display import Markdown, display
+
+rmse_table = pd.DataFrame(
+    {
+        "Model RMSE": [lasso_est, ridge_est, net_est],
+        "Kaggle RMSE": [0.15410, 0.14920, 0.14912],
+    },
+    index=["Lasso", "Ridge", "Elastic Net"],
+)
+
+rmse_table
+
+rmse_long = (
+    rmse_table
+    .reset_index()
+    .rename(columns={"index": "Model"})
+    .melt(id_vars="Model", var_name="Source", value_name="RMSE")
+)
+
+rmse_long["Model"] = pd.Categorical(
+    rmse_long["Model"],
+    categories=["Lasso", "Elastic Net", "Ridge"],
+    ordered=True,
+)
+
+# Text about the metric
+display(
+    Markdown(
+        "RMSE is computed on the log of SalePrice."
+    )
+)
+
+# Text about Elastic Net being best
+display(
+    Markdown(
+        "**Elastic Net achieves the lowest RMSE and its Kaggle RMSE is close to its "
+        "internal RMSE, indicating good generalization compared with Ridge and Lasso.**"
+    )
+)
+
+# Numeric performance summary
+net_kaggle_rmse = 0.14912
+net_gap = abs(net_est - net_kaggle_rmse)
+net_vs_lasso = (lasso_est - net_est) / lasso_est * 100
+
+display(
+    Markdown(
+        "**Performance Summary**  \n"
+        f"- Elastic Net RMSE: `{net_est:.5f}` (Kaggle: `{net_kaggle_rmse:.5f}`)  \n"
+        f"- Gap between internal and Kaggle RMSE: `{net_gap:.5f}`  \n"
+        f"- Improvement vs Lasso: **{net_vs_lasso:.1f}%** lower RMSE."
+    )
+)
+```
+
+```{python}
+#| title: "Training SalePrice Distribution"
+
+saleprice_df = pd.DataFrame({"SalePrice": train["SalePrice"]})
+
+(
+    ggplot(saleprice_df, aes(x="SalePrice"))
+    + geom_histogram(bins=30, color="black", alpha=0.6)
+    + labs(
+        title="Training SalePrice Distribution",
+        x="SalePrice",
+        y="Count",
+    )
+    + theme_minimal()
+    + theme(figure_size=(8, 4))
+)
+```
+
+## Prediction Distribution {height="50%"}
+
+```{python}
+
+#| title: "Model Predictions by Model"
+#| fig-width: 12
+#| fig-height: 6
+#| width: 40%
+
+
+dist_df = pd.DataFrame(
+    {
+        "Elastic Net": y_pred,
+        "Lasso": y_pred2,
+        "Ridge": y_pred3
+    }
+)
+
+dist_long = dist_df.melt(var_name="Model", value_name="Prediction")
+
+ggplot(dist_long, aes(x="Model", y="Prediction", fill="Model")) + \
+    geom_boxplot() + \
+    scale_fill_manual(
+        values={
+            "Elastic Net": "red",
+            "Lasso": "blue",
+            "Ridge": "green"
+        }
+    ) + \
+    labs(
+        title="Prediction Boxplot by Model",
+        x="Model",
+        y="Predicted Value",
+        fill="Model"
+    )
+```
+
+```{python}
+#| title: "Elastic Net Predictions Are Less Right-Skewed Than Training Prices”"
+#| fig-cap: Elastic Net achieves lowest RMSE and prediction distribution less right-skewed than training SalePrice values indicating better overall performance and more stable predictions.
+
+dist_df = pd.DataFrame({"y_pred": y_pred})
+
+(
+    ggplot(dist_df, aes(x="y_pred"))
+    + geom_histogram(bins=30, color="black", alpha=0.6)
+    + labs(
+        title="Elastic Net Prediction Distribution",
+        x="y_pred",
+        y="Count",
+    ) 
+    + theme_minimal()
+    + theme(figure_size=(8, 3))  
+)
+
+```
+

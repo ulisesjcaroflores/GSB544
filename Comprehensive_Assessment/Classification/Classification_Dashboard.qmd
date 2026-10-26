@@ -1,0 +1,136 @@
+---
+title: Classification Dashboard 
+subtitle: Important features 
+author: Ulises Caro
+format: 
+    dashboard:
+        embed-resources: true
+        theme: flatly
+        css: styles.css
+echo: false
+---
+
+## Setup (hidden)
+
+```{python}
+#| include: false
+#| echo: false
+%run "Kaggle Classification.ipynb"
+```
+
+## Comparison to other Models & Confusion Matrix {height = "40%"}
+
+```{python}
+#| title: "Accuracy Comparison"
+#| width: 50%
+
+from IPython.display import Markdown, display
+
+acc_sorted = acc_results_df.sort_values(by="Accuracy", ascending=False)
+
+acc_sorted.style.format({"Accuracy": "{:.4f}"}).set_table_styles([
+    {"selector": "th", "props": [("text-align", "center")]},
+]).set_properties(
+    subset=pd.IndexSlice[acc_sorted.index[0], :],  # top model row
+    **{"font-weight": "bold"}
+)
+
+display(Markdown(
+    "**The best-performing row (highlighted) indicates the tuned logistic\n"
+    "regression model that we use in the subsequent diagnostics.**"
+))
+
+```
+
+```{python}
+# | title: Confusion Matrix and Classification Report
+# | width: 50%
+
+print("Confusion Matrix - LDA")
+ConfusionMatrixDisplay.from_predictions(y_encoded, y_pred_lda, cmap="Purples")
+```
+
+## ROC Curve for Each Class & KPI Metric {height = 60%}
+
+```{python}
+#| title: One-vs-Rest (OvR) ROC Curves by Political Affiliation
+#| fig-cap: Each curve shows the OvR ROC for a single affiliation. AUC values in the legend indicate how easily the model distinguishes that class from all others.
+#| width: 60%
+
+y_proba_log = cross_val_predict(log_best, X, y_encoded, cv=CV, method="predict_proba")
+class0_name = le.inverse_transform([0])[0]
+class1_name = le.inverse_transform([1])[0]
+class2_name = le.inverse_transform([2])[0]
+
+roc_auc = roc_auc_score(y_encoded, y_proba_log, multi_class="ovr", average="macro")
+
+y0 = (y_encoded == 0).astype(int)    
+y_proba_0 = y_proba_log[:, 0]        
+
+fpr_0, tpr_0, _ = roc_curve(y0, y_proba_0)
+df_0 = pd.DataFrame({
+    "model": f"{class0_name} vs Rest (Log, OOF)",
+    "FPR": fpr_0,
+    "TPR": tpr_0
+})
+
+y1 = (y_encoded == 1).astype(int)    
+y_proba_1 = y_proba_log[:, 1]        
+
+fpr_1, tpr_1, _ = roc_curve(y1, y_proba_1)
+df_1 = pd.DataFrame({
+    "model": f"{class1_name} vs Rest (Log, OOF)",
+    "FPR": fpr_1,
+    "TPR": tpr_1
+})
+
+y2 = (y_encoded == 2).astype(int)    
+y_proba_2 = y_proba_log[:, 2]        
+
+fpr_2, tpr_2, _ = roc_curve(y2, y_proba_2)
+df_2 = pd.DataFrame({
+    "model": f"{class2_name} vs Rest (Log, OOF)",
+    "FPR": fpr_2,
+    "TPR": tpr_2
+})
+
+roc_curve_df = pd.concat([df_0, df_1, df_2], ignore_index=True)
+
+(
+    ggplot(roc_curve_df, aes("FPR", "TPR", color="model"))
+    + geom_path()
+    + geom_abline(linetype="dashed")
+    + labs(
+        title="OvR ROC Curves – Logistic Regression (log_best, OOF)",
+        x="False Positive Rate",
+        y="True Positive Rate"
+    )
+    + theme_minimal()
+    + theme(figure_size=(6.5, 3.5))  
+)
+```
+
+```{python}
+# Class-level ROC AUCs from the existing ROC curves
+auc_0 = auc(fpr_0, tpr_0)
+auc_1 = auc(fpr_1, tpr_1)
+auc_2 = auc(fpr_2, tpr_2)
+
+auc_df = pd.DataFrame({
+    "Affiliation": [class0_name, class1_name, class2_name],
+    "ROC AUC": [auc_0, auc_1, auc_2]
+}).sort_values(by="ROC AUC", ascending=False)
+
+
+display(
+    auc_df.style.format({"ROC AUC": "{:.3f}"})
+)
+
+display(Markdown(
+    "Accuracy tells us how often the tuned logistic regression model gets the affiliation right at a single "
+    "decision cutoff, while ROC AUC, both overall and by class, shows how well it separates each political "
+    "group from the others across all probability thresholds. Taken together, high accuracy and strong ROC AUC "
+    "scores suggest that the logistic model is not only often correct but also reliably ranks the true "
+    "affiliation above the alternatives, even though a few classes remain harder to distinguish."
+))
+```
